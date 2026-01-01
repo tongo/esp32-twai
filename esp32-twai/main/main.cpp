@@ -26,10 +26,13 @@
 
 static const char *TAG = "twai_sender";
 
+static QueueHandle_t rx_queue = NULL;
+
 typedef struct {
     twai_frame_t frame;
     uint8_t data[TWAI_FRAME_MAX_LEN];
-} twai_sender_data_t;
+} twai_data_t;
+
 
 // Transmission completion callback
 static IRAM_ATTR bool twai_sender_tx_done_callback(twai_node_handle_t handle, const twai_tx_done_event_data_t *edata, void *user_ctx)
@@ -47,10 +50,55 @@ static IRAM_ATTR bool twai_sender_on_error_callback(twai_node_handle_t handle, c
     return false; // No task wake required
 }
 
+// TWAI receive callback - store data and signal
+static bool IRAM_ATTR twai_listener_rx_callback(twai_node_handle_t handle, const twai_rx_done_event_data_t *edata, void *user_ctx)
+{
+    // Callback ISR (Interrupt Service Routine) -> ESP32 si interrompe perché è arrivato un messaggio
+    // Serve gestire l'interrupt nel minor tempo possibile (microsecondi)
+    // Quindi mettiamo il messaggio in una coda, così un task specifico lo potrà gestire
+    uint8_t recv_buff[8];
+    twai_frame_t frame = {
+        .buffer = recv_buff,
+        .buffer_len = sizeof(recv_buff),
+    };
+    BaseType_t high_task_wakeup = pdFALSE;
+
+    if (twai_node_receive_from_isr(handle, &frame) == ESP_OK) {
+        // Invia alla coda. Se è piena, il messaggio viene ignorato
+        xQueueSendFromISR(rx_queue, &frame, &high_task_wakeup);
+    }
+    return (high_task_wakeup == pdTRUE);
+}
+
+// Task di elaborazione della coda dei messaggi CAN ricevuti
+void twai_log_task(void *pvParameters)
+{
+    twai_frame_t rx_msg;
+    ESP_LOGI(TAG, "Task di logging avviato e pronto.");
+
+    while (1) {
+        // Il task rimane "Sospeso" qui finché non c'è un dato nella coda.
+        // Non consuma CPU mentre aspetta.
+        if (xQueueReceive(rx_queue, &rx_msg, portMAX_DELAY) == pdTRUE) {
+            
+            ESP_LOGI(TAG, "RX: %x [%d] %x %x %x %x %x %x %x %x", \
+              rx_msg.header.id, rx_msg.header.dlc, rx_msg.buffer[0], rx_msg.buffer[1], rx_msg.buffer[2], rx_msg.buffer[3], rx_msg.buffer[4], rx_msg.buffer[5], rx_msg.buffer[6], rx_msg.buffer[7]);
+        }
+    }
+}
+
+static bool IRAM_ATTR twai_listener_on_state_change_callback(twai_node_handle_t handle, const twai_state_change_event_data_t *edata, void *user_ctx)
+{
+    const char *twai_state_name[] = {"error_active", "error_warning", "error_passive", "bus_off"};
+    ESP_EARLY_LOGI(TAG, "state changed: %s -> %s", twai_state_name[edata->old_sta], twai_state_name[edata->new_sta]);
+    return false;
+}
+
 extern "C" void app_main(void)
 {
-    twai_node_handle_t sender_node = NULL;
     printf("===================TWAI Sender Example Starting...===================\n");
+    twai_node_handle_t sender_node = NULL;
+    rx_queue = xQueueCreate(20, sizeof(twai_frame_t));
 
     // Configure TWAI node
     twai_onchip_node_config_t node_config = {
@@ -67,7 +115,8 @@ extern "C" void app_main(void)
         .tx_queue_depth = TWAI_QUEUE_DEPTH,
         .flags {
             .enable_self_test = 1,
-            // enable_listen_only = 1,
+            .enable_loopback = 1, // Necessario per ricevere i messaggi inviati da me steso e poter usare la modalità self_test 
+            // .enable_listen_only = 1 // Imposta TWAI in sola lettura
         }
     };
 
@@ -76,10 +125,14 @@ extern "C" void app_main(void)
 
     // Register transmission completion callback
     twai_event_callbacks_t callbacks = {
-        .on_tx_done = twai_sender_tx_done_callback,
+        //.on_tx_done = twai_sender_tx_done_callback,
+        .on_rx_done = twai_listener_rx_callback,
+        .on_state_change = twai_listener_on_state_change_callback,
         .on_error = twai_sender_on_error_callback,
     };
     ESP_ERROR_CHECK(twai_node_register_event_callbacks(sender_node, &callbacks, NULL));
+
+    xTaskCreate(twai_log_task, "twai_log_task", 4096, NULL, 5, NULL);
 
     // Enable TWAI node
     ESP_ERROR_CHECK(twai_node_enable(sender_node));
@@ -100,9 +153,10 @@ extern "C" void app_main(void)
         ESP_ERROR_CHECK(twai_node_transmit_wait_all_done(sender_node, -1)); // -1 means wait forever
 
         // Send burst data messages every 10 seconds
+        
         if ((timestamp / 1000000) % 10 == 0) {
             int num_frames = howmany(TWAI_DATA_LEN, TWAI_FRAME_MAX_LEN);
-            twai_sender_data_t *data = (twai_sender_data_t *)calloc(num_frames, sizeof(twai_sender_data_t));
+            twai_data_t *data = (twai_data_t *)calloc(num_frames, sizeof(twai_data_t));
             assert(data != NULL);
             ESP_LOGI(TAG, "Sending packet of %d bytes in %d frames", TWAI_DATA_LEN, num_frames);
             for (int i = 0; i < num_frames; i++) {
@@ -117,6 +171,7 @@ extern "C" void app_main(void)
             ESP_ERROR_CHECK(twai_node_transmit_wait_all_done(sender_node, -1));
             free(data);
         }
+        
 
         vTaskDelay(pdMS_TO_TICKS(1000));
         twai_node_status_t status;
