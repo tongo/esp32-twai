@@ -6,10 +6,10 @@
 #include "freertos/semphr.h"
 
 #define RAW_MESSAGES_QUEUE_SIZE 20
-#define TWAI_TX_GPIO     GPIO_NUM_16
-#define TWAI_RX_GPIO     GPIO_NUM_17
+#define TWAI_TX_GPIO GPIO_NUM_16 // GPIO_NUM_NC | GPIO_NUM_16
+#define TWAI_RX_GPIO GPIO_NUM_17
 #define TWAI_QUEUE_DEPTH        10
-#define TWAI_BITRATE            1000000
+#define TWAI_BITRATE            125000
 
 // TEST Message IDs
 #define TWAI_DATA_ID            0x100

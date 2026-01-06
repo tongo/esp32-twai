@@ -11,28 +11,29 @@
 #include "can_manager.hpp"
 
 static const char *TAG = "main";
+#define MAIN_TAG "main"
 
 extern "C" void app_main(void)
 {
     printf("=================== TWAI Example Starting... ===================\n");
-    ESP_LOGI(TAG, "START");
-    CanManager* canManager = new CanManager(true);
+    ESP_LOGI(MAIN_TAG, "START");
+    CanManager* canManager = new CanManager(false);
     canManager->begin();
     canManager->enableNode();
     
     vTaskDelay(pdMS_TO_TICKS(20000));
-    printf("=================== DISABLE NODE ===================\n");
-    canManager->disableNode();
+    // printf("=================== DISABLE NODE ===================\n");
+    // canManager->disableNode();
 
-    vTaskDelay(pdMS_TO_TICKS(5000));
-    printf("=================== ENABLE NODE ===================\n");
-    canManager->enableNode();
-    vTaskDelay(pdMS_TO_TICKS(20000));
-    printf("=================== DISABLE NODE ===================\n");
-    canManager->disableNode();
+    // vTaskDelay(pdMS_TO_TICKS(5000));
+    // printf("=================== ENABLE NODE ===================\n");
+    // canManager->enableNode();
+    // vTaskDelay(pdMS_TO_TICKS(20000));
+    // printf("=================== DISABLE NODE ===================\n");
+    // canManager->disableNode();
 
-    while (1) {
-        vTaskDelay(pdMS_TO_TICKS(1000));
-        ESP_LOGI(TAG, "Tutto fermo");
-    }
+    // while (1) {
+    //     vTaskDelay(pdMS_TO_TICKS(1000));
+    //     ESP_LOGI(TAG, "Tutto fermo");
+    // }
 }

@@ -32,11 +32,6 @@ void CanManager::begin() {
         },
         .fail_retry_cnt = 3,
         .tx_queue_depth = TWAI_QUEUE_DEPTH,
-        // .flags {
-        //     .enable_self_test = 1,
-        //     .enable_loopback = 1, // Necessario per ricevere i messaggi inviati da me steso e poter usare la modalità self_test 
-        //     // .enable_listen_only = 1 // Imposta TWAI in sola lettura
-        // }
     };
     if (_isSelfTestMode) {
         nodeConfig.flags = {
@@ -120,9 +115,10 @@ void CanManager::taskElaborazioneMessaggiCan(void *pvParameters) {
         // Il task rimane "Sospeso" qui finché non c'è un dato nella coda.
         // Non consuma CPU mentre aspetta.
         if (xQueueReceive(instance->rawCanMessagesQueue, &rx_msg, portMAX_DELAY) == pdTRUE) {
+            // printf("%d,%x,%x,%x,%x,%x,%x,%x,%x", rx_msg.header.id, rx_msg.buffer[0], rx_msg.buffer[1], rx_msg.buffer[2], rx_msg.buffer[3], rx_msg.buffer[4], rx_msg.buffer[5], rx_msg.buffer[6], rx_msg.buffer[7]);
             
-            ESP_LOGI(TAG, "RX: %x [%d] %x %x %x %x %x %x %x %x", \
-              rx_msg.header.id, rx_msg.header.dlc, rx_msg.buffer[0], rx_msg.buffer[1], rx_msg.buffer[2], rx_msg.buffer[3], rx_msg.buffer[4], rx_msg.buffer[5], rx_msg.buffer[6], rx_msg.buffer[7]);
+            ESP_LOGI(TAG, "%x,%x,%x,%x,%x,%x,%x,%x,%x", \
+              rx_msg.header.id, rx_msg.buffer[0], rx_msg.buffer[1], rx_msg.buffer[2], rx_msg.buffer[3], rx_msg.buffer[4], rx_msg.buffer[5], rx_msg.buffer[6], rx_msg.buffer[7]);
         }
     }
 }
